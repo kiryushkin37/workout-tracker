@@ -1,3 +1,4 @@
+// app.js
 // ====== Storage ======
 const STORAGE_KEY = "wt_data_v1";
 
@@ -32,7 +33,7 @@ function saveData() {
 function buildExerciseIndex(plan) {
   const set = new Set();
   Object.values(plan).forEach(list => list.forEach(x => set.add(x)));
-  return Array.from(set).sort((a,b)=>a.localeCompare(b,"ru"));
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 let state = loadData();
@@ -87,6 +88,7 @@ if ("serviceWorker" in navigator) {
 
 // ====== App State ======
 let selectedDay = null;
+let dayPinnedByUser = false; // если пользователь сам выбрал день — не авто-переключаем
 let selectedExercise = null;
 let currentSetsDraft = []; // [{weight, reps}...]
 
@@ -100,38 +102,58 @@ function init() {
   const today = new Date();
   dateInput.value = toISODate(today);
 
-  // select first day
-  selectedDay = days[0];
+  // auto pick day by today's date (before user pins)
+  const autoDay = mapDateToPlanDay(dateInput.value);
+  if (autoDay) selectedDay = autoDay;
+
+  // select day (auto or first)
+  selectedDay = selectedDay || days[0];
   daySelect.value = selectedDay;
 
   daySelect.addEventListener("change", () => {
     selectedDay = daySelect.value;
+    dayPinnedByUser = true; // пользователь выбрал вручную
     selectedExercise = null;
     currentSetsDraft = [];
     renderExercises();
     renderSets();
   });
 
-  dateInput.addEventListener("change", () => { /* just used on save */ });
+  dateInput.addEventListener("change", () => {
+    if (dayPinnedByUser) return; // если день выбран руками — не трогаем
+    const auto = mapDateToPlanDay(dateInput.value);
+    if (auto && auto !== selectedDay) {
+      selectedDay = auto;
+      daySelect.value = selectedDay;
+      selectedExercise = null;
+      currentSetsDraft = [];
+      renderExercises();
+      renderSets();
+    }
+  });
 
   btnAddExercise.addEventListener("click", () => {
     newExerciseName.value = "";
     newExerciseDay.value = selectedDay;
     dlgExercise.showModal();
-    setTimeout(()=>newExerciseName.focus(), 50);
+    setTimeout(() => newExerciseName.focus(), 50);
   });
 
   btnSaveExercise.addEventListener("click", (e) => {
-    // dialog will close; but validate
     const name = newExerciseName.value.trim();
     const day = newExerciseDay.value;
     if (!name) { e.preventDefault(); return; }
+
     if (!state.plan[day].includes(name)) state.plan[day].push(name);
     if (!state.exercises.includes(name)) state.exercises.push(name);
-    state.exercises.sort((a,b)=>a.localeCompare(b,"ru"));
+    state.exercises.sort((a, b) => a.localeCompare(b, "ru"));
     saveData();
+
+    // user is explicitly choosing a day here
     selectedDay = day;
     daySelect.value = selectedDay;
+    dayPinnedByUser = true;
+
     renderExercises();
     renderHistoryControls();
   });
@@ -167,15 +189,16 @@ function renderExercises() {
     el.className = "item";
     const isActive = ex === selectedExercise;
 
+    // Tap the whole item to select (no "Выбрать" button)
     el.innerHTML = `
       <div class="item__meta">
         <div class="item__title">${escapeHtml(ex)}</div>
         <div class="item__sub">${isActive ? "выбрано" : "тапни чтобы выбрать"}</div>
       </div>
-      <button class="item__btn" data-action="select">Выбрать</button>
     `;
+    el.style.cursor = "pointer";
 
-    el.querySelector("[data-action='select']").addEventListener("click", () => {
+    el.addEventListener("click", () => {
       selectedExercise = ex;
       currentSetsDraft = [];
       renderExercises();
@@ -241,7 +264,6 @@ function renderSets() {
 function finishWorkout() {
   const date = dateInput.value || toISODate(new Date());
 
-  // validate sets
   const sets = currentSetsDraft
     .map(s => ({
       weight: parseFloat(String(s.weight).replace(",", ".")),
@@ -264,7 +286,6 @@ function finishWorkout() {
 
   saveData();
 
-  // reset draft for next exercise
   currentSetsDraft = [];
   renderSets();
   renderHistoryControls();
@@ -272,7 +293,6 @@ function finishWorkout() {
 }
 
 function renderHistoryControls() {
-  // exercise dropdown from index
   const exs = state.exercises && state.exercises.length ? state.exercises : buildExerciseIndex(state.plan);
 
   const current = historyExercise.value || exs[0] || "";
@@ -291,11 +311,11 @@ function renderHistory() {
   const rows = state.workouts
     .filter(w => w.exercise === ex)
     .filter(w => !cutoff || new Date(w.date) >= cutoff)
-    .sort((a,b)=> a.date.localeCompare(b.date));
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const points = rows.map(w => {
     const topW = Math.max(...w.sets.map(s => s.weight));
-    const vol = w.sets.reduce((acc,s)=> acc + (s.weight * s.reps), 0);
+    const vol = w.sets.reduce((acc, s) => acc + (s.weight * s.reps), 0);
     return {
       date: w.date,
       topWeight: topW,
@@ -329,28 +349,27 @@ function drawChart(points, metric) {
   const w = chartCanvas.width = chartCanvas.clientWidth * devicePixelRatio;
   const h = chartCanvas.height = 220 * devicePixelRatio;
 
-  ctx.clearRect(0,0,w,h);
+  ctx.clearRect(0, 0, w, h);
 
-  // background grid
   ctx.globalAlpha = 1;
   ctx.lineWidth = 1 * devicePixelRatio;
   ctx.strokeStyle = "rgba(255,255,255,.08)";
-  for (let i=1;i<=4;i++){
-    const y = (h/5)*i;
-    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+  for (let i = 1; i <= 4; i++) {
+    const y = (h / 5) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
   }
 
   if (points.length === 0) {
     ctx.fillStyle = "rgba(255,255,255,.7)";
-    ctx.font = `${14*devicePixelRatio}px system-ui`;
-    ctx.fillText("Нет данных по выбранному упражнению.", 12*devicePixelRatio, 24*devicePixelRatio);
+    ctx.font = `${14 * devicePixelRatio}px system-ui`;
+    ctx.fillText("Нет данных по выбранному упражнению.", 12 * devicePixelRatio, 24 * devicePixelRatio);
     return;
   }
 
   const vals = points.map(p => p[metric]);
   const min = Math.min(...vals);
   const max = Math.max(...vals);
-  const pad = (max-min) * 0.15 || 1;
+  const pad = (max - min) * 0.15 || 1;
   const yMin = min - pad;
   const yMax = max + pad;
 
@@ -359,37 +378,35 @@ function drawChart(points, metric) {
   const top = 16 * devicePixelRatio;
   const bottom = h - 30 * devicePixelRatio;
 
-  const xFor = (i) => left + (i * (right-left)) / Math.max(points.length-1,1);
-  const yFor = (v) => bottom - ((v - yMin) * (bottom-top)) / (yMax - yMin);
+  const xFor = (i) => left + (i * (right - left)) / Math.max(points.length - 1, 1);
+  const yFor = (v) => bottom - ((v - yMin) * (bottom - top)) / (yMax - yMin);
 
-  // line
   ctx.strokeStyle = "rgba(79,140,255,.9)";
   ctx.lineWidth = 2.5 * devicePixelRatio;
   ctx.beginPath();
-  points.forEach((p,i) => {
+  points.forEach((p, i) => {
     const x = xFor(i);
     const y = yFor(p[metric]);
-    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   });
   ctx.stroke();
 
-  // points
   ctx.fillStyle = "rgba(79,140,255,.95)";
-  points.forEach((p,i) => {
+  points.forEach((p, i) => {
     const x = xFor(i);
     const y = yFor(p[metric]);
     ctx.beginPath();
-    ctx.arc(x,y,3.5*devicePixelRatio,0,Math.PI*2);
+    ctx.arc(x, y, 3.5 * devicePixelRatio, 0, Math.PI * 2);
     ctx.fill();
   });
 
-  // labels (first/last date)
   ctx.fillStyle = "rgba(255,255,255,.7)";
-  ctx.font = `${12*devicePixelRatio}px system-ui`;
-  ctx.fillText(points[0].date, left, h - 10*devicePixelRatio);
-  const last = points[points.length-1].date;
+  ctx.font = `${12 * devicePixelRatio}px system-ui`;
+  ctx.fillText(points[0].date, left, h - 10 * devicePixelRatio);
+
+  const last = points[points.length - 1].date;
   const m = ctx.measureText(last).width;
-  ctx.fillText(last, right - m, h - 10*devicePixelRatio);
+  ctx.fillText(last, right - m, h - 10 * devicePixelRatio);
 }
 
 // ====== Export/Import/Reset ======
@@ -418,7 +435,7 @@ function importData(e) {
       if (!state.workouts) state.workouts = [];
       if (!state.exercises) state.exercises = buildExerciseIndex(state.plan);
       saveData();
-      init(); // re-init UI
+      init();
       alert("Импорт выполнен.");
     } catch {
       alert("Не получилось импортировать файл. Проверь, что это backup .json из приложения.");
@@ -437,18 +454,35 @@ function resetData() {
 }
 
 // ====== Utils ======
-function toISODate(d){
-  const pad = (n) => String(n).padStart(2,"0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function toISODate(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-function round1(n){ return Math.round(n*10)/10; }
+function round1(n) { return Math.round(n * 10) / 10; }
 
-function escapeHtml(s){
+function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
 }
-function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+function escapeAttr(s) { return escapeHtml(s).replace(/"/g, "&quot;"); }
+
+function mapDateToPlanDay(isoDate) {
+  // isoDate: YYYY-MM-DD
+  const d = new Date(isoDate + "T12:00:00"); // avoid timezone edge
+  const dow = d.getDay(); // 0=Sun ... 6=Sat
+
+  const keys = Object.keys(state.plan);
+  const findKeyStartsWith = (prefix) => keys.find(k => k.startsWith(prefix)) || null;
+
+  if (dow === 1) return findKeyStartsWith("Понедельник");
+  if (dow === 2) return findKeyStartsWith("Вторник");
+  if (dow === 3) return findKeyStartsWith("Среда");
+  if (dow === 4) return findKeyStartsWith("Четверг");
+  if (dow === 5) return findKeyStartsWith("Пятница");
+  if (dow === 6) return findKeyStartsWith("Суббота");
+  return findKeyStartsWith("Воскресенье");
+}
 
 // ====== Boot ======
 init();
