@@ -12,6 +12,33 @@ const defaultPlan = {
   "Воскресенье (опц.)": ["Z2 20м / EMOM берпи / Мобилити"]
 };
 
+// Simple recommendation map (shown under exercises)
+const recs = {
+  "Присед / Жим ногами": "3×5–8",
+  "Жим лёжа": "3×5–8",
+  "Подтягивания / Верхний блок": "3×6–10",
+  "Разведения в стороны": "2×12–20",
+  "Планка": "2×30–60с",
+
+  "Тяга горизонтальная (row)": "3×8–12",
+  "Жим гантелей/штанги на плечи": "3×6–10",
+  "Face Pull": "2–3×12–20",
+  "Пресс (скруч./колени)": "2–3×10–15",
+
+  "RDL (румынская тяга) / Гиперэкстензии": "3×5–8 / 3×10–15",
+  "Жим на наклонной": "3×6–10",
+  "Икры": "2×10–15",
+  "Боковая планка": "2×30–45с",
+
+  "Болгарский сплит-присед / Выпады": "3×8–12/нога",
+  "Подтягивания / Верхний блок (др. хват)": "3×6–10",
+  "Жим (др. вариант)": "3×6–12",
+  "Трицепс": "2×10–15",
+  "Бицепс": "2×10–15",
+
+  "Z2 20м / EMOM берпи / Мобилити": "20 мин"
+};
+
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -51,8 +78,10 @@ const btnFinish = $("btnFinish");
 const historyExercise = $("historyExercise");
 const metricSelect = $("metricSelect");
 const rangeSelect = $("rangeSelect");
-const chartCanvas = $("chart");
 const historyTable = $("historyTable");
+
+const btnInstall = $("btnInstall");
+let deferredPrompt = null;
 
 const dlgExercise = $("dlgExercise");
 const newExerciseName = $("newExerciseName");
@@ -64,16 +93,13 @@ const btnExport = $("btnExport");
 const importFile = $("importFile");
 const btnReset = $("btnReset");
 
-const btnInstall = $("btnInstall");
-let deferredPrompt = null;
-
 // ====== PWA install prompt (mostly Android; on iOS user uses Add to Home Screen) ======
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   deferredPrompt = e;
   btnInstall.hidden = false;
 });
-btnInstall.addEventListener("click", async () => {
+btnInstall?.addEventListener("click", async () => {
   if (!deferredPrompt) return;
   deferredPrompt.prompt();
   await deferredPrompt.userChoice;
@@ -88,7 +114,7 @@ if ("serviceWorker" in navigator) {
 
 // ====== App State ======
 let selectedDay = null;
-let dayPinnedByUser = false; // если пользователь сам выбрал день — не авто-переключаем
+let dayPinnedByUser = false;
 let selectedExercise = null;
 let currentSetsDraft = []; // [{weight, reps}...]
 
@@ -106,21 +132,21 @@ function init() {
   const autoDay = mapDateToPlanDay(dateInput.value);
   if (autoDay) selectedDay = autoDay;
 
-  // select day (auto or first)
   selectedDay = selectedDay || days[0];
   daySelect.value = selectedDay;
 
   daySelect.addEventListener("change", () => {
     selectedDay = daySelect.value;
-    dayPinnedByUser = true; // пользователь выбрал вручную
+    dayPinnedByUser = true;
     selectedExercise = null;
     currentSetsDraft = [];
     renderExercises();
     renderSets();
+    // keep history selection as-is unless user selects an exercise
   });
 
   dateInput.addEventListener("change", () => {
-    if (dayPinnedByUser) return; // если день выбран руками — не трогаем
+    if (dayPinnedByUser) return;
     const auto = mapDateToPlanDay(dateInput.value);
     if (auto && auto !== selectedDay) {
       selectedDay = auto;
@@ -149,7 +175,6 @@ function init() {
     state.exercises.sort((a, b) => a.localeCompare(b, "ru"));
     saveData();
 
-    // user is explicitly choosing a day here
     selectedDay = day;
     daySelect.value = selectedDay;
     dayPinnedByUser = true;
@@ -170,6 +195,7 @@ function init() {
   importFile.addEventListener("change", importData);
   btnReset.addEventListener("click", resetData);
 
+  // History controls
   metricSelect.addEventListener("change", renderHistory);
   rangeSelect.addEventListener("change", renderHistory);
   historyExercise.addEventListener("change", renderHistory);
@@ -177,7 +203,7 @@ function init() {
   renderExercises();
   renderSets();
   renderHistoryControls();
-  renderHistory();
+  renderHistory(); // initial
 }
 
 function renderExercises() {
@@ -189,11 +215,12 @@ function renderExercises() {
     el.className = "item";
     const isActive = ex === selectedExercise;
 
-    // Tap the whole item to select (no "Выбрать" button)
+    const rec = recs[ex] ? `реком.: ${recs[ex]}` : "";
+
     el.innerHTML = `
       <div class="item__meta">
         <div class="item__title">${escapeHtml(ex)}</div>
-        <div class="item__sub">${isActive ? "выбрано" : "тапни чтобы выбрать"}</div>
+        <div class="item__sub">${isActive ? "выбрано" : escapeHtml(rec)}</div>
       </div>
     `;
     el.style.cursor = "pointer";
@@ -205,6 +232,10 @@ function renderExercises() {
       renderSets();
       btnAddSet.disabled = false;
       btnFinish.disabled = false;
+
+      // Also update history panel immediately to this exercise
+      historyExercise.value = ex;
+      renderHistory();
     });
 
     if (isActive) el.style.borderColor = "rgba(79,140,255,.55)";
@@ -289,15 +320,24 @@ function finishWorkout() {
   currentSetsDraft = [];
   renderSets();
   renderHistoryControls();
+
+  // After saving, keep history on this exercise and refresh
+  if (historyExercise.value !== selectedExercise) historyExercise.value = selectedExercise;
   renderHistory();
 }
 
 function renderHistoryControls() {
   const exs = state.exercises && state.exercises.length ? state.exercises : buildExerciseIndex(state.plan);
-
   const current = historyExercise.value || exs[0] || "";
+
   historyExercise.innerHTML = exs.map(x => `<option value="${escapeAttr(x)}">${escapeHtml(x)}</option>`).join("");
+
   if (exs.includes(current)) historyExercise.value = current;
+
+  // If user already selected an exercise today, align history selector
+  if (selectedExercise && exs.includes(selectedExercise)) {
+    historyExercise.value = selectedExercise;
+  }
 }
 
 function renderHistory() {
@@ -313,100 +353,45 @@ function renderHistory() {
     .filter(w => !cutoff || new Date(w.date) >= cutoff)
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  // Build daily points (one per saved "exercise per day" entry)
   const points = rows.map(w => {
     const topW = Math.max(...w.sets.map(s => s.weight));
     const vol = w.sets.reduce((acc, s) => acc + (s.weight * s.reps), 0);
+    const repsTotal = w.sets.reduce((acc, s) => acc + s.reps, 0);
     return {
       date: w.date,
       topWeight: topW,
-      volume: vol
+      volume: vol,
+      repsTotal,
+      setsCount: w.sets.length
     };
   });
 
-  drawChart(points, metric);
-  renderTable(points, metric);
+  renderHistoryTable(points, metric);
 }
 
-function renderTable(points, metric) {
+function renderHistoryTable(points, metric) {
   const title = metric === "topWeight" ? "Топ вес" : "Объём";
-  const fmt = (v) => metric === "topWeight"
-    ? `${round1(v)} кг`
-    : `${Math.round(v)} кг×повт`;
+  const fmt = (p) => metric === "topWeight"
+    ? `${round1(p.topWeight)} кг`
+    : `${Math.round(p.volume)} кг×повт`;
+
+  // last workout summary
+  const last = points.length ? points[points.length - 1] : null;
+  const lastLine = last
+    ? `Последний раз: <b>${escapeHtml(last.date)}</b> — ${escapeHtml(fmt(last))} (подходов: ${last.setsCount}, повторов: ${last.repsTotal})`
+    : `Нет записей по этому упражнению пока.`;
 
   const html = `
+    <div class="hint" style="margin: 6px 0 10px;">${lastLine}</div>
     <table>
-      <thead><tr><th>Дата</th><th>${title}</th></tr></thead>
+      <thead><tr><th>Дата</th><th>${escapeHtml(title)}</th></tr></thead>
       <tbody>
-        ${points.slice().reverse().map(p => `<tr><td>${escapeHtml(p.date)}</td><td>${escapeHtml(fmt(p[metric]))}</td></tr>`).join("")}
+        ${points.slice().reverse().map(p => `<tr><td>${escapeHtml(p.date)}</td><td>${escapeHtml(fmt(p))}</td></tr>`).join("")}
       </tbody>
     </table>
   `;
-  historyTable.innerHTML = html;
-}
-
-function drawChart(points, metric) {
-  const ctx = chartCanvas.getContext("2d");
-  const w = chartCanvas.width = chartCanvas.clientWidth * devicePixelRatio;
-  const h = chartCanvas.height = 220 * devicePixelRatio;
-
-  ctx.clearRect(0, 0, w, h);
-
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = 1 * devicePixelRatio;
-  ctx.strokeStyle = "rgba(255,255,255,.08)";
-  for (let i = 1; i <= 4; i++) {
-    const y = (h / 5) * i;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-  }
-
-  if (points.length === 0) {
-    ctx.fillStyle = "rgba(255,255,255,.7)";
-    ctx.font = `${14 * devicePixelRatio}px system-ui`;
-    ctx.fillText("Нет данных по выбранному упражнению.", 12 * devicePixelRatio, 24 * devicePixelRatio);
-    return;
-  }
-
-  const vals = points.map(p => p[metric]);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const pad = (max - min) * 0.15 || 1;
-  const yMin = min - pad;
-  const yMax = max + pad;
-
-  const left = 14 * devicePixelRatio;
-  const right = w - 14 * devicePixelRatio;
-  const top = 16 * devicePixelRatio;
-  const bottom = h - 30 * devicePixelRatio;
-
-  const xFor = (i) => left + (i * (right - left)) / Math.max(points.length - 1, 1);
-  const yFor = (v) => bottom - ((v - yMin) * (bottom - top)) / (yMax - yMin);
-
-  ctx.strokeStyle = "rgba(79,140,255,.9)";
-  ctx.lineWidth = 2.5 * devicePixelRatio;
-  ctx.beginPath();
-  points.forEach((p, i) => {
-    const x = xFor(i);
-    const y = yFor(p[metric]);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
-  ctx.fillStyle = "rgba(79,140,255,.95)";
-  points.forEach((p, i) => {
-    const x = xFor(i);
-    const y = yFor(p[metric]);
-    ctx.beginPath();
-    ctx.arc(x, y, 3.5 * devicePixelRatio, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.fillStyle = "rgba(255,255,255,.7)";
-  ctx.font = `${12 * devicePixelRatio}px system-ui`;
-  ctx.fillText(points[0].date, left, h - 10 * devicePixelRatio);
-
-  const last = points[points.length - 1].date;
-  const m = ctx.measureText(last).width;
-  ctx.fillText(last, right - m, h - 10 * devicePixelRatio);
+  historyTable.innerHTML = `<div class="table">${html}</div>`;
 }
 
 // ====== Export/Import/Reset ======
@@ -468,8 +453,7 @@ function escapeHtml(s) {
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, "&quot;"); }
 
 function mapDateToPlanDay(isoDate) {
-  // isoDate: YYYY-MM-DD
-  const d = new Date(isoDate + "T12:00:00"); // avoid timezone edge
+  const d = new Date(isoDate + "T12:00:00");
   const dow = d.getDay(); // 0=Sun ... 6=Sat
 
   const keys = Object.keys(state.plan);
