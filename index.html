@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111111" />
+  <title>Workout Tracker</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand__title">Workout Tracker</div>
+      <div class="brand__sub">Локально • Оффлайн • На iPhone</div>
+    </div>
+    <div class="actions">
+      <button id="btnInstall" class="btn btn--ghost" hidden>Установить</button>
+      <button id="btnExport" class="btn btn--ghost">Экспорт</button>
+      <label class="btn btn--ghost" for="importFile">Импорт</label>
+      <input id="importFile" type="file" accept="application/json" hidden />
+      <button id="btnReset" class="btn btn--danger">Сброс</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <h2>Сегодня</h2>
+
+      <div class="row">
+        <label class="label">День</label>
+        <select id="daySelect" class="input"></select>
+
+        <label class="label">Дата</label>
+        <input id="dateInput" class="input" type="date" />
+      </div>
+
+      <div class="workout-grid">
+        <div class="col">
+          <h3>Упражнения</h3>
+          <div id="exerciseList" class="list"></div>
+
+          <button id="btnAddExercise" class="btn btn--primary">+ Добавить упражнение</button>
+        </div>
+
+        <div class="col">
+          <h3>Подходы</h3>
+          <div id="setsPanel" class="sets"></div>
+
+          <div class="row row--tight">
+            <button id="btnAddSet" class="btn btn--primary" disabled>+ Подход</button>
+            <button id="btnFinish" class="btn" disabled>Сохранить тренировку</button>
+          </div>
+
+          <div class="hint">
+            Подсказка: данные сохраняются в браузере (LocalStorage). Экспортируй иногда — это твой “бэкап”.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>История и прогресс</h2>
+
+      <div class="row">
+        <label class="label">Упражнение</label>
+        <select id="historyExercise" class="input"></select>
+
+        <label class="label">Показатель</label>
+        <select id="metricSelect" class="input">
+          <option value="topWeight">Топ вес</option>
+          <option value="volume">Объём (вес×повторы)</option>
+        </select>
+
+        <label class="label">Период</label>
+        <select id="rangeSelect" class="input">
+          <option value="30">30 дней</option>
+          <option value="90">90 дней</option>
+          <option value="365">365 дней</option>
+          <option value="9999">всё</option>
+        </select>
+      </div>
+
+      <canvas id="chart" height="140"></canvas>
+      <div id="historyTable" class="table"></div>
+    </section>
+
+    <footer class="footer">
+      На iPhone: Safari → Share → <b>Add to Home Screen</b> (после установки будет как приложение).
+    </footer>
+  </main>
+
+  <dialog id="dlgExercise">
+    <form method="dialog" class="modal">
+      <h3>Добавить упражнение</h3>
+      <label class="label">Название</label>
+      <input id="newExerciseName" class="input" placeholder="Напр. Bench Press" />
+      <label class="label">К какой тренировке?</label>
+      <select id="newExerciseDay" class="input"></select>
+
+      <div class="row row--tight">
+        <button class="btn btn--ghost" value="cancel">Отмена</button>
+        <button id="btnSaveExercise" class="btn btn--primary" value="ok">Добавить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
