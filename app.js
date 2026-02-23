@@ -216,11 +216,16 @@ function renderExercises() {
     const isActive = ex === selectedExercise;
 
     const rec = recs[ex] ? `реком.: ${recs[ex]}` : "";
-
+    const last = getLastResultSummary(ex);
+    
+    const subText = isActive
+      ? `${last}`
+      : `${rec}${rec ? " • " : ""}${last}`;
+    
     el.innerHTML = `
       <div class="item__meta">
         <div class="item__title">${escapeHtml(ex)}</div>
-        <div class="item__sub">${isActive ? "выбрано" : escapeHtml(rec)}</div>
+        <div class="item__sub">${escapeHtml(subText)}</div>
       </div>
     `;
     el.style.cursor = "pointer";
@@ -466,6 +471,31 @@ function mapDateToPlanDay(isoDate) {
   if (dow === 5) return findKeyStartsWith("Пятница");
   if (dow === 6) return findKeyStartsWith("Суббота");
   return findKeyStartsWith("Воскресенье");
+}
+
+function getLastResultSummary(exercise) {
+  const rows = state.workouts
+    .filter(w => w.exercise === exercise)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!rows.length) return "нет истории";
+
+  const last = rows[rows.length - 1];
+
+  const topW = Math.max(...last.sets.map(s => s.weight));
+  const setsCount = last.sets.length;
+
+  const repsArr = last.sets.map(s => s.reps);
+  const allSameReps = repsArr.every(r => r === repsArr[0]);
+
+  if (allSameReps) {
+    return `${round1(topW)} кг, ${setsCount}×${repsArr[0]}`;
+  }
+
+  // если повторы разные — покажем как "3×(10-12)" (коротко и понятно)
+  const minR = Math.min(...repsArr);
+  const maxR = Math.max(...repsArr);
+  return `${round1(topW)} кг, ${setsCount}×(${minR}–${maxR})`;
 }
 
 // ====== Boot ======
