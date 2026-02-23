@@ -17,9 +17,7 @@ html,body{ height:100%; }
 body{
   margin:0;
   font-family:var(--font);
-  background: radial-gradient(1200px 800px at 20% -10%, rgba(79,140,255,.18), transparent 55%),
-              radial-gradient(900px 600px at 90% 0%, rgba(255,79,79,.12), transparent 60%),
-              var(--bg);
+  background: var(--bg);
   color:var(--text);
 }
 
@@ -62,7 +60,7 @@ h3{ margin:0 0 10px 0; font-size:16px; color:var(--muted); font-weight:700; }
 
 .row{
   display:grid;
-  grid-template-columns: 70px 1fr 70px 1fr;
+  grid-template-columns: 70px minmax(0,1fr) 70px minmax(0,1fr);
   gap:10px;
   align-items:center;
   margin:10px 0 14px;
@@ -225,3 +223,7 @@ dialog::backdrop{
   box-shadow: var(--shadow);
 }
 .modal h3{ margin-top:0; }
+
+input[type="date"].input{
+  min-width: 0;
+}
